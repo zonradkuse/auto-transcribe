@@ -1,0 +1,8 @@
+Recasepunc has originally been developed by Benoit Favre:
+https://github.com/benob/recasepunc
+
+This particular verison has been adapted for German language by the vosk-api project:
+https://alphacephei.com/vosk/models#punctuation-models
+
+I modified this again to make prediction work in python scripts.
+

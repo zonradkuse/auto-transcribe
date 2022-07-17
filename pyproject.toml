@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "speech-recognition"
+version = "0.1.0"
+description = ""
+authors = ["Johannes Neuhaus <johannes.neuhaus@rwth-aachen.de>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+stt = "^1.3.0"
+coqui-stt-model-manager = "^0.0.21"
+vosk = "^0.3.43"
+websockets = "^10.3"
+Wave = "^0.0.2"
+sklearn = "^0.0"
+srt = "^3.5.2"
+regex = "^2022.7.9"
+sacremoses = "^0.0.53"
+torch = "^1.12.0"
+tqdm = "^4.64.0"
+transformers = "^4.20.1"
+#mosestokenizer = { git = "https://github.com/benob/mosestokenizer.git" }
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

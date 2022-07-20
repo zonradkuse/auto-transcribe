@@ -25,7 +25,32 @@ Then download the models you would like to use. Checkout the models folder for m
 
 ## Usage
 
-Convert your interview files to 16 bit 16kHz PCM mono wave
+```
+usage: transcribe.py [-h] [--language-model LANGUAGE_MODEL] [--punctuation-model PUNCTUATION_MODEL] [--speakers SPEAKERS] [--speech-enhancement-on] [--store-segment-audio STORE_SEGMENT_AUDIO] [--log-level LOG_LEVEL] [--threads THREADS] audio [audio ...]
+
+Transcribe interviews.
+
+positional arguments:
+  audio                 The audio files to transcribe with the given settings
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --language-model LANGUAGE_MODEL
+                        The path to the vosk language model
+  --punctuation-model PUNCTUATION_MODEL
+                        The path to the punctuation model
+  --speakers SPEAKERS   Number of speakers during the interview
+  --speech-enhancement-on
+                        Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy.
+  --store-segment-audio STORE_SEGMENT_AUDIO
+                        Path to store segmented audio files to.
+  --log-level LOG_LEVEL
+                        Set the loglevel
+  --threads THREADS     Set the number of threads allowed to use for processing multiple audio files
+```
+
+### Conversion using ffmpeg
+Conversion is now optionla. However, you can convert your interview files to 16 bit 16kHz PCM mono wave
 
 ```bash
 ffmpeg -i in.mp3 -acodec pcm_s16le -ac 1 -ar 16000 out.wav
@@ -40,7 +65,7 @@ ffmpeg -i in.wav -af  "highpass=f=60,lowpass=f=10000,acompressor=threshold=-20dB
 Finally, start recognition.
 
 ```bash
-poetry run python src/transcribe.py --language-model models/vosk/vosk-model-de-0.21 --speaker-model models/vosk/speaker-ident-0.4 --punctuation-model models/repunc/vosk-recasepunc-de-0.21/checkpoint in.wav
+poetry run python src/transcribe.py --language-model models/vosk/vosk-model-de-0.21 --punctuation-model models/repunc/vosk-recasepunc-de-0.21/checkpoint in.wav
 ```
 
 You can adjust the number of expected speakers by adding `--speakers <n>` to the call. The default is 2.

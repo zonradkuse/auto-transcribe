@@ -1,2 +1,8 @@
+models/sepformer-whamr-enhancement/
+models/sepformer-whamr16k-enhancement/
+pretrained_models
+
+*.rttm
+*.wav
 *.swp
 __pycache__

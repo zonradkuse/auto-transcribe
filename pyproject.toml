@@ -13,7 +13,6 @@ sklearn = "^0.0"
 srt = "^3.5.2"
 regex = "^2022.7.9"
 sacremoses = "^0.0.53"
-#torch = "^1.17.0"
 tqdm = "^4.64.0"
 transformers = "^4.20.1"
 #mosestokenizer = { git = "https://github.com/benob/mosestokenizer.git" }

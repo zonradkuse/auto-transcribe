@@ -48,7 +48,7 @@ parser.add_argument('--log-level', type=str, default="INFO",
                     help='Set the loglevel')
 parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
                     help='Set the number of threads allowed to use for processing multiple audio files')
-parser.add_argument('audio', nargs = '+', help = 'The audio file to transcribe')
+parser.add_argument('audio', nargs = '+', help = 'The audio files to transcribe with the given settings')
 
 
 

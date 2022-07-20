@@ -20,6 +20,7 @@ import srt
 import datetime
 import multiprocessing
 import tempfile
+import subprocess
 
 import recasepunc
 from vosk import Model, KaldiRecognizer, SpkModel
@@ -35,12 +36,14 @@ from vosk import SetLogLevel
 parser = argparse.ArgumentParser(description='Transcribe interviews.')
 parser.add_argument('--language-model', type=str,
                     help='The path to the vosk language model')
-parser.add_argument('--speaker-model', type=str,
-                    help='The path to the vosk speaker model')
 parser.add_argument('--punctuation-model', type=str,
                     help='The path to the punctuation model')
 parser.add_argument('--speakers', type=int, default=2,
                     help='Number of speakers during the interview')
+parser.add_argument('--speech-enhancement-on', action='store_true',
+                    help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy.")
+parser.add_argument('--store-segment-audio', type=str,
+                    help="Path to store segmented audio files to.")
 parser.add_argument('--log-level', type=str, default="INFO",
                     help='Set the loglevel')
 parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
@@ -71,24 +74,23 @@ def concat_speaker_segments(segments):
     result = []
     current_start = 0
     current_end = -1
-    for segment in segments:
+    for i, segment in enumerate(segments):
         if segment['label'] != current_speaker:
             # speaker change detected - concatenate all previous segment times
-            end_time = (current_end + segment['start'])/2
             seg = {
                 'speaker': current_speaker,
                 'start': current_start,
-                'end': end_time
+                'end': segment['start']
             }
 
             result.append(seg)
-            current_start = end_time
+            current_start = segments[i-1]['end']
             current_speaker = segment['label']
 
         current_end = segment['end']
 
     # last segment must still be added
-    final_start_time = (segments[-1]['start'] + segments[-2]['end'])/2
+    final_start_time = segments[-2]['end']
     final_seg = {
         'speaker': segments[-1]['label'],
         'start': final_start_time,
@@ -112,10 +114,12 @@ def transcribe_audio(audio_path):
     with tempfile.TemporaryDirectory() as tmp:
         logging.info(f"Writing segments as wave file to {tmp}")
         for i, segment in enumerate(segments):
+            logging.info(f"Preprocessing segment {i + 1}/{len(segments)}")
+            filename = f'{tmp}/{i}.wav'
             start_frame = int(segment['start'] * wf.getframerate())
             end_frame = int(segment['end'] * wf.getframerate())
             length = end_frame - start_frame
-            segment_wave = wave.open(f'{tmp}/{i}', 'wb')
+            segment_wave = wave.open(filename, 'wb')
             segment_wave.setframerate(wf.getframerate())
             segment_wave.setnframes(length)
             segment_wave.setsampwidth(wf.getsampwidth())
@@ -125,16 +129,30 @@ def transcribe_audio(audio_path):
             segment_wave.writeframes(data)
             segment_wave.close()
 
-        rec = KaldiRecognizer(model, wf.getframerate())
-        rec.SetWords(True)
+            if args.speech_enhancement_on:
+                logging.info(f"Applying speech enhancement to {filename}")
+                from speechbrain.pretrained import SepformerSeparation as separator
+                from speechbrain.dataio.dataio import write_audio
+                import torchaudio
+
+                enhancer_model = separator.from_hparams(source="speechbrain/sepformer-whamr-enhancement", savedir='../models/sepformer-whamr-enhancement')
+                enhanced_speech = enhancer_model.separate_file(filename)
+                torchaudio.save(filename, enhanced_speech[:, :, 0].detach().cpu(), 8000)
+
+        rec = KaldiRecognizer(model, 16000)
+        # rec.SetWords(True)
 
         for i, segment in enumerate(segments):
-            f = wave.open(f'{tmp}/{i}', "rb")
+            logging.info(f"ASR segment {i + 1}/{len(segments)}")
+            process = subprocess.Popen(['ffmpeg', '-loglevel', 'quiet', '-i',
+                            f'{tmp}/{i}.wav',
+                            '-ar', '16000', '-ac', '1', '-f', 's16le', '-'],
+                            stdout=subprocess.PIPE)
 
             recognized = ''
 
             while True:
-                data = f.readframes(1000)
+                data = process.stdout.read(4000)
                 if len(data) == 0:
                     break
                 if rec.AcceptWaveform(data):
@@ -146,6 +164,15 @@ def transcribe_audio(audio_path):
             res = json.loads(rec.FinalResult())
             recognized += res['text']
             segment_texts.append(recognized)
+
+        if args.store_segment_audio:
+            # copy temporary directory to save path
+            try:
+                from shutil import copytree
+                copytree(tmp, args.store_segment_audio)
+            except Exception as e:
+                logging.error("Could not save segmented audio data")
+                logging.error(e)
 
 
     if args.punctuation_model:

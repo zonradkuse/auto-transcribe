@@ -9,9 +9,6 @@
 # The accuracy of the German model is suboptimal if the audio quality is not already great (close 
 # to perfect). You probably want to post-process the result and compare it to the recording.
 #
-if __name__ != '__main__':
-    print("This file is not intended to be imported")
-    exit(1)
 
 import sys
 import wave
@@ -22,6 +19,7 @@ import argparse
 import srt
 import datetime
 import multiprocessing
+import tempfile
 
 import recasepunc
 from vosk import Model, KaldiRecognizer, SpkModel
@@ -33,7 +31,6 @@ from recasepunc import WordpieceTokenizer
 
 # disable vosk logs
 from vosk import SetLogLevel
-SetLogLevel(-1)
 
 parser = argparse.ArgumentParser(description='Transcribe interviews.')
 parser.add_argument('--language-model', type=str,
@@ -50,30 +47,7 @@ parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
                     help='Set the number of threads allowed to use for processing multiple audio files')
 parser.add_argument('audio', nargs = '+', help = 'The audio file to transcribe')
 
-args = parser.parse_args()
 
-numeric_level = getattr(logging, args.log_level.upper(), None)
-if not isinstance(numeric_level, int):
-    raise ValueError('Invalid log level: %s' % loglevel)
-
-logging.basicConfig(level=numeric_level)
-
-if args.speaker_model is None or args.language_model is None:
-    print("Language and speaker model must both be specified!")
-    parser.print_help()
-    exit(1)
-
-if not os.path.exists(args.speaker_model):
-    print ("Please download the speaker model from https://alphacephei.com/vosk/models and unpack as {} in the current folder.".format(args.speaker_model))
-    exit (1)
-
-if not os.path.exists(args.language_model):
-    print ("Please download the language model from https://alphacephei.com/vosk/models and unpack as {} in the current folder.".format(args.language_model))
-    exit (1)
-
-# Large vocabulary free form recognition
-model = Model(model_path=args.language_model)
-spk_model = SpkModel(args.speaker_model)
 
 def cosine_dist(x, y):
     nx = np.array(x)
@@ -81,123 +55,120 @@ def cosine_dist(x, y):
     return np.dot(nx, ny) / np.linalg.norm(nx) / np.linalg.norm(ny)
 
 
+def diarize_speakers(audio_path, num_speakers):
+    from simple_diarizer.diarizer import Diarizer
+    diar = Diarizer(
+        embed_model='ecapa', # supported types: ['xvec', 'ecapa']
+        cluster_method='sc', # supported types: ['ahc', 'sc']
+        window=1.5, # size of window to extract embeddings (in seconds)
+        period=0.75)
+
+    segments = diar.diarize(audio_path, num_speakers=2)
+    return concat_speaker_segments(segments)
+
+def concat_speaker_segments(segments):
+    current_speaker = segments[0]['label']
+    result = []
+    current_start = 0
+    current_end = -1
+    for segment in segments:
+        if segment['label'] != current_speaker:
+            # speaker change detected - concatenate all previous segment times
+            end_time = (current_end + segment['start'])/2
+            seg = {
+                'speaker': current_speaker,
+                'start': current_start,
+                'end': end_time
+            }
+
+            result.append(seg)
+            current_start = end_time
+            current_speaker = segment['label']
+
+        current_end = segment['end']
+
+    # last segment must still be added
+    final_start_time = (segments[-1]['start'] + segments[-2]['end'])/2
+    final_seg = {
+        'speaker': segments[-1]['label'],
+        'start': final_start_time,
+        'end': segments[-1]['end']
+    }
+
+    result.append(final_seg)
+
+    return result
+
 def transcribe_audio(audio_path):
-    # TODO replace by ffmpeg preprocessing
     wf = wave.open(audio_path, "rb")
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
         print ("Audio file must be WAV format mono PCM.")
         exit (1)
 
-    rec = KaldiRecognizer(model, wf.getframerate())
-    rec.SetWords(True)
-    rec.SetSpkModel(spk_model)
+    logging.info("Diarizing speakers into segments...")
+    segments = diarize_speakers(audio_path, args.speakers)
+    segment_texts = []
+    # TODO split by segments and perform asr on each one.
+    with tempfile.TemporaryDirectory() as tmp:
+        logging.info(f"Writing segments as wave file to {tmp}")
+        for i, segment in enumerate(segments):
+            start_frame = int(segment['start'] * wf.getframerate())
+            end_frame = int(segment['end'] * wf.getframerate())
+            length = end_frame - start_frame
+            segment_wave = wave.open(f'{tmp}/{i}', 'wb')
+            segment_wave.setframerate(wf.getframerate())
+            segment_wave.setnframes(length)
+            segment_wave.setsampwidth(wf.getsampwidth())
+            segment_wave.setnchannels(wf.getnchannels())
+            wf.setpos(start_frame)
+            data = wf.readframes(length)
+            segment_wave.writeframes(data)
+            segment_wave.close()
 
-    result_data = []
+        rec = KaldiRecognizer(model, wf.getframerate())
+        rec.SetWords(True)
 
-    while True:
-        data = wf.readframes(600)
-        if len(data) == 0:
-            break
-        if rec.AcceptWaveform(data):
-            res = json.loads(rec.Result())
-            logging.debug(f"VOSK intermediate result {res}")
-            result_data.append(res)
+        for i, segment in enumerate(segments):
+            f = wave.open(f'{tmp}/{i}', "rb")
 
-    # add remaining transcription at end of file
-    res = json.loads(rec.FinalResult())
-    result_data.append(res)
+            recognized = ''
 
+            while True:
+                data = f.readframes(1000)
+                if len(data) == 0:
+                    break
+                if rec.AcceptWaveform(data):
+                    res = json.loads(rec.Result())
+                    logging.debug(f"VOSK intermediate result {res}")
+                    recognized += res['text'] + ' '
 
-    # Use first voice signature as baseline
-    spk_sig = None
-    for res in result_data:
-        if 'spk' in res:
-            spk_sig = res['spk']
-            break
+            # add remaining transcription at end of file
+            res = json.loads(rec.FinalResult())
+            recognized += res['text']
+            segment_texts.append(recognized)
 
-    # If there is no speaker signature, use a default vector (1x128) instead. Use 0.5 as value.
-    # 0-vector would only yield 0 distance and 1 vector would yield a meaningless distance.
-    if spk_sig is None:
-        spk_sig = [0.5] * 128
-
-    print(f"Voice signature chosen as {spk_sig}")
-
-    # cluster voice signature using k-means.
-    voice_signatures = [[0,cosine_dist(spk_sig, res['spk'])] for res in result_data if 'spk' in res]
-    km = KMeans(n_clusters = args.speakers).fit(voice_signatures)
-
-    # Join consecutive results which belong to the same cluster
-    speaker_ordered_transcript = []
-    current_speaker_results = []
-    current_speaker = -1 # unknown speaker
-    for res in result_data:
-        # check and set speaker
-        if 'spk' in res:
-            similarity = cosine_dist(spk_sig, res['spk'])
-            predicted_speaker_id = km.predict([[0, similarity]])
-            if current_speaker == -1:
-                # current speaker not set yet but given
-                current_speaker = predicted_speaker_id
-            elif current_speaker != predicted_speaker_id:
-                # there has likely been a change of speakers
-                speaker_ordered_transcript.append({
-                    "speaker": current_speaker,
-                    "texts": current_speaker_results
-                })
-                current_speaker_results = []
-                current_speaker = predicted_speaker_id
-
-        current_speaker_results.append(res)
-
-    speaker_ordered_transcript.append({
-                    "speaker": current_speaker,
-                    "texts": current_speaker_results
-                })
-
-    # Restore punctuation for each speaker block if enabled
-    speaker_texts = []
-    for i, res in enumerate(speaker_ordered_transcript):
-        spoken = ''
-        for recognized in res['texts']:
-            text = recognized['text']
-            spoken += text + ' '
-        speaker_texts.append(spoken)
 
     if args.punctuation_model:
         logging.info("Reconstructing punctuation and casing")
-        punctuated_texts = recasepunc.generate_predictions(None, args.punctuation_model, speaker_texts)
+        punctuated_texts = recasepunc.generate_predictions(None, args.punctuation_model, segment_texts)
     else:
-        punctuated_texts = speaker_texts
+        punctuated_texts = segment_texts
 
     srt_entries = []
     # limit line length
     _LINE_LENGTH = 13
-    for i, res in enumerate(speaker_ordered_transcript):
-        for recognized in res['texts']:
-            words = punctuated_texts[i].split()
-            lines = []
-            lines.append(f"[Speaker {res['speaker']}]")
-            for j in range(0, len(words), _LINE_LENGTH):
-                   line = words[j : j + _LINE_LENGTH]
-                   lines.append(' '.join(line))
+    for i, segment in enumerate(segments):
+        words = punctuated_texts[i].split()
+        lines = []
+        speaker = segment['speaker']
+        lines.append(f"[Speaker {speaker}]")
+        for j in range(0, len(words), _LINE_LENGTH):
+               line = words[j : j + _LINE_LENGTH]
+               lines.append(' '.join(line))
 
         # find start and end times
-        start_seconds = None
-        for r in res['texts']:
-            if 'result' not in r:
-                continue
-
-            start_seconds = r['result'][0]['start']
-            break
-
-        end_seconds = None
-        for r in reversed(res['texts']):
-            if 'result' not in r:
-                continue
-
-            end_seconds = r['result'][-1]['end']
-            break
-
+        start_seconds = segment['start']
+        end_seconds = segment['end']
 
         s = srt.Subtitle(index=i,
             content = '\n'.join(lines),
@@ -213,10 +184,42 @@ def transcribe_audio(audio_path):
 
 
 def main():
+    global args
+    args = parser.parse_args()
+
+    for path in args.audio:
+        wf = wave.open(path, "rb")
+        if wf.getnchannels() != 1 or \
+          wf.getsampwidth() != 2 or \
+          wf.getcomptype() != "NONE" or \
+          wf.getframerate() != 16000:
+            print(f"Audio file {path} must be WAV format mono PCM 16kHz.")
+            print("Use ffmpeg to create mono files")
+            print("For example:")
+            print(f"ffmpeg -i {path} -acodec pcm_s16le -ac 1 -ar 16000 {path}.converted")
+            print("auto-transcribe is not doing this for you automatically (yet)")
+            exit(1)
+
+    # some basic logging settings for vosk
+    SetLogLevel(-1)
+
+    numeric_level = getattr(logging, args.log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % loglevel)
+
+    logging.basicConfig(level=numeric_level)
+
+    if not os.path.exists(args.language_model):
+        print ("Please download the language model from https://alphacephei.com/vosk/models and unpack as {} in the current folder.".format(args.language_model))
+        exit (1)
+
+    global model
+    model = Model(model_path=args.language_model)
 
     pool = multiprocessing.Pool(args.threads)
     for out in pool.imap_unordered(transcribe_audio, args.audio):
         pass
 
-main()
+if __name__ == '__main__':
+    main()
 

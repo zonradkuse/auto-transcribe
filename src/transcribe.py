@@ -51,13 +51,6 @@ parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
 parser.add_argument('audio', nargs = '+', help = 'The audio files to transcribe with the given settings')
 
 
-
-def cosine_dist(x, y):
-    nx = np.array(x)
-    ny = np.array(y)
-    return np.dot(nx, ny) / np.linalg.norm(nx) / np.linalg.norm(ny)
-
-
 def diarize_speakers(audio_path, nspeakers):
     from simple_diarizer.diarizer import Diarizer
     diar = Diarizer(

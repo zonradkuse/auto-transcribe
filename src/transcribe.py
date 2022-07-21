@@ -42,8 +42,8 @@ parser.add_argument('--speakers', type=int, default=2,
                     help='Number of speakers during the interview')
 parser.add_argument('--speech-enhancement-on', action='store_true',
                     help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy")
-parser.add_argument('--store-segment-audio', type=str,
-                    help="Path to store segmented audio files to.")
+parser.add_argument('--ffmpeg-strategy', type=str, choices=['MERGE', 'LEFT', 'RIGHT'],
+                    help="Strategy to use for creating a mono file using ffmpeg. If you use stereo microphones, you can select from 'MERGE', 'LEFT' and 'RIGHT'. Using the appropriate channel can improve accuracy.")
 parser.add_argument('--log-level', type=str, default="INFO",
                     help='Set the loglevel')
 parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
@@ -103,14 +103,10 @@ def concat_speaker_segments(segments):
 
 def transcribe_audio(audio_path):
     wf = wave.open(audio_path, "rb")
-    if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
-        print ("Audio file must be WAV format mono PCM.")
-        exit (1)
 
     logging.info("Diarizing speakers into segments...")
     segments = diarize_speakers(audio_path, args.speakers)
     segment_texts = []
-    # TODO split by segments and perform asr on each one.
     with tempfile.TemporaryDirectory() as tmp:
         logging.info(f"Writing segments as wave file to {tmp}")
         for i, segment in enumerate(segments):
@@ -144,10 +140,19 @@ def transcribe_audio(audio_path):
             rec = KaldiRecognizer(model, 16000)
             # rec.SetWords(True)
             logging.info(f"ASR segment {i + 1}/{len(segments)}")
-            process = subprocess.Popen(['ffmpeg', '-loglevel', 'quiet', '-i',
-                            f'{tmp}/{i}.wav',
-                            '-ar', '16000', '-ac', '1', '-f', 's16le', '-'],
-                            stdout=subprocess.PIPE)
+            ffmpeg_options = ['ffmpeg', '-loglevel', 'quiet', '-i', f'{tmp}/{i}.wav', '-ar', '16000', '-f', 's16le']
+            if args.ffmpeg_strategy == 'MERGE':
+                ffmpeg_options.extend(['-ac', '1'])
+            elif args.ffmpeg_strategy == 'LEFT':
+                ffmpeg_options.extend(['-af', '"\pan=mono|c0=FL\"'])
+            elif args.ffmpeg_strategy == 'RIGHT':
+                ffmpeg_options.extend(['-af', '\"pan=mono|c0=FR\"'])
+            else:
+                assert(False)
+
+            # write to pipe
+            ffmpeg_options.append('-')
+            process = subprocess.Popen(ffmpeg_options, stdout=subprocess.PIPE)
 
             recognized = ''
 
@@ -165,14 +170,13 @@ def transcribe_audio(audio_path):
             recognized += res['text']
             segment_texts.append(recognized)
 
-        if args.store_segment_audio:
-            # copy temporary directory to save path
-            try:
-                from shutil import copytree
-                copytree(tmp, args.store_segment_audio)
-            except Exception as e:
-                logging.error("Could not save segmented audio data")
-                logging.error(e)
+        # copy temporary directory to save path
+        try:
+            from shutil import copytree
+            copytree(tmp, f'{audio_path}-segments')
+        except Exception as e:
+            logging.error("Could not save segmented audio data")
+            logging.error(e)
 
 
     if args.punctuation_model:
@@ -213,19 +217,6 @@ def transcribe_audio(audio_path):
 def main():
     global args
     args = parser.parse_args()
-
-    for path in args.audio:
-        wf = wave.open(path, "rb")
-        if wf.getnchannels() != 1 or \
-          wf.getsampwidth() != 2 or \
-          wf.getcomptype() != "NONE" or \
-          wf.getframerate() != 16000:
-            print(f"Audio file {path} must be WAV format mono PCM 16kHz.")
-            print("Use ffmpeg to create mono files")
-            print("For example:")
-            print(f"ffmpeg -i {path} -acodec pcm_s16le -ac 1 -ar 16000 {path}.converted")
-            print("auto-transcribe is not doing this for you automatically (yet)")
-            exit(1)
 
     # some basic logging settings for vosk
     SetLogLevel(-1)

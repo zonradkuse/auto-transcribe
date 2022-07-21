@@ -58,7 +58,7 @@ def cosine_dist(x, y):
     return np.dot(nx, ny) / np.linalg.norm(nx) / np.linalg.norm(ny)
 
 
-def diarize_speakers(audio_path, num_speakers):
+def diarize_speakers(audio_path, nspeakers):
     from simple_diarizer.diarizer import Diarizer
     diar = Diarizer(
         embed_model='ecapa', # supported types: ['xvec', 'ecapa']
@@ -66,7 +66,7 @@ def diarize_speakers(audio_path, num_speakers):
         window=1.5, # size of window to extract embeddings (in seconds)
         period=0.75)
 
-    segments = diar.diarize(audio_path, num_speakers=2)
+    segments = diar.diarize(audio_path, num_speakers=nspeakers)
     return concat_speaker_segments(segments)
 
 def concat_speaker_segments(segments):

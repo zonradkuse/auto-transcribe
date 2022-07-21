@@ -139,10 +139,10 @@ def transcribe_audio(audio_path):
                 enhanced_speech = enhancer_model.separate_file(filename)
                 torchaudio.save(filename, enhanced_speech[:, :, 0].detach().cpu(), 8000)
 
-        rec = KaldiRecognizer(model, 16000)
-        # rec.SetWords(True)
 
         for i, segment in enumerate(segments):
+            rec = KaldiRecognizer(model, 16000)
+            # rec.SetWords(True)
             logging.info(f"ASR segment {i + 1}/{len(segments)}")
             process = subprocess.Popen(['ffmpeg', '-loglevel', 'quiet', '-i',
                             f'{tmp}/{i}.wav',

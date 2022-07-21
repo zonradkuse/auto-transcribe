@@ -42,7 +42,7 @@ parser.add_argument('--speakers', type=int, default=2,
                     help='Number of speakers during the interview')
 parser.add_argument('--speech-enhancement-on', action='store_true',
                     help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy")
-parser.add_argument('--ffmpeg-strategy', type=str, choices=['MERGE', 'LEFT', 'RIGHT'],
+parser.add_argument('--ffmpeg-strategy', type=str, choices=['MERGE', 'LEFT', 'RIGHT'], default='MERGE'
                     help="Strategy to use for creating a mono file using ffmpeg. If you use stereo microphones, you can select from 'MERGE', 'LEFT' and 'RIGHT'. Using the appropriate channel can improve accuracy.")
 parser.add_argument('--log-level', type=str, default="INFO",
                     help='Set the loglevel')

@@ -26,7 +26,8 @@ Then download the models you would like to use. Checkout the models folder for m
 ## Usage
 
 ```
-usage: transcribe.py [-h] [--language-model LANGUAGE_MODEL] [--punctuation-model PUNCTUATION_MODEL] [--speakers SPEAKERS] [--speech-enhancement-on] [--store-segment-audio STORE_SEGMENT_AUDIO] [--log-level LOG_LEVEL] [--threads THREADS] audio [audio ...]
+usage: transcribe.py [-h] [--language-model LANGUAGE_MODEL] [--punctuation-model PUNCTUATION_MODEL] [--speakers SPEAKERS] [--speech-enhancement-on] [--ffmpeg-strategy {MERGE,LEFT,RIGHT}] [--log-level LOG_LEVEL] [--threads THREADS]
+                     audio [audio ...]
 
 Transcribe interviews.
 
@@ -41,9 +42,9 @@ optional arguments:
                         The path to the punctuation model
   --speakers SPEAKERS   Number of speakers during the interview
   --speech-enhancement-on
-                        Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy.
-  --store-segment-audio STORE_SEGMENT_AUDIO
-                        Path to store segmented audio files to.
+                        Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy
+  --ffmpeg-strategy {MERGE,LEFT,RIGHT}
+                        Strategy to use for creating a mono file using ffmpeg. If you use stereo microphones, you can select from 'MERGE', 'LEFT' and 'RIGHT'. Using the appropriate channel can improve accuracy.
   --log-level LOG_LEVEL
                         Set the loglevel
   --threads THREADS     Set the number of threads allowed to use for processing multiple audio files

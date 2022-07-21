@@ -41,7 +41,7 @@ parser.add_argument('--punctuation-model', type=str,
 parser.add_argument('--speakers', type=int, default=2,
                     help='Number of speakers during the interview')
 parser.add_argument('--speech-enhancement-on', action='store_true',
-                    help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy.")
+                    help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy")
 parser.add_argument('--store-segment-audio', type=str,
                     help="Path to store segmented audio files to.")
 parser.add_argument('--log-level', type=str, default="INFO",

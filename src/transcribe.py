@@ -42,7 +42,7 @@ parser.add_argument('--speakers', type=int, default=2,
                     help='Number of speakers during the interview')
 parser.add_argument('--speech-enhancement-on', action='store_true',
                     help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy")
-parser.add_argument('--ffmpeg-strategy', type=str, choices=['MERGE', 'LEFT', 'RIGHT'], default='MERGE'
+parser.add_argument('--ffmpeg-strategy', type=str, choices=['MERGE', 'LEFT', 'RIGHT'], default='MERGE',
                     help="Strategy to use for creating a mono file using ffmpeg. If you use stereo microphones, you can select from 'MERGE', 'LEFT' and 'RIGHT'. Using the appropriate channel can improve accuracy.")
 parser.add_argument('--log-level', type=str, default="INFO",
                     help='Set the loglevel')
@@ -133,18 +133,21 @@ def transcribe_audio(audio_path):
             rec = KaldiRecognizer(model, 16000)
             # rec.SetWords(True)
             logging.info(f"ASR segment {i + 1}/{len(segments)}")
-            ffmpeg_options = ['ffmpeg', '-loglevel', 'quiet', '-i', f'{tmp}/{i}.wav', '-ar', '16000', '-f', 's16le']
+            ffmpeg_options = ['ffmpeg', '-i', f'{tmp}/{i}.wav', '-ar', '16000', '-acodec', 'pcm_s16le', '-f', 'wav']
             if args.ffmpeg_strategy == 'MERGE':
                 ffmpeg_options.extend(['-ac', '1'])
             elif args.ffmpeg_strategy == 'LEFT':
-                ffmpeg_options.extend(['-af', '"\pan=mono|c0=FL\"'])
+                ffmpeg_options.extend(['-af', "pan=mono|c0=FL"])
             elif args.ffmpeg_strategy == 'RIGHT':
-                ffmpeg_options.extend(['-af', '\"pan=mono|c0=FR\"'])
+                ffmpeg_options.extend(['-af', "pan=mono|c0=FR"])
             else:
                 assert(False)
 
-            # write to pipe
             ffmpeg_options.append('-')
+
+            # write to pipe
+            logging.debug(f"Executing ffmpeg command {' '.join(ffmpeg_options)}")
+
             process = subprocess.Popen(ffmpeg_options, stdout=subprocess.PIPE)
 
             recognized = ''

@@ -44,6 +44,10 @@ parser.add_argument('--speech-enhancement-on', action='store_true',
                     help="Use speechbrain's sppech enhancement. It usually does NOT enhance ASR accuracy")
 parser.add_argument('--ffmpeg-strategy', type=str, choices=['MERGE', 'LEFT', 'RIGHT'], default='MERGE',
                     help="Strategy to use for creating a mono file using ffmpeg. If you use stereo microphones, you can select from 'MERGE', 'LEFT' and 'RIGHT'. Using the appropriate channel can improve accuracy.")
+parser.add_argument('--ffmpeg-noise-reduction', action='store_true', default=True,
+                    help="Apply ffmpeg's NR filter.")
+parser.add_argument('--ffmpeg-compress', action='store_true', default=True,
+                    help="Apply ffmpeg's compand filter for compression.")
 parser.add_argument('--log-level', type=str, default="INFO",
                     help='Set the loglevel')
 parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
@@ -134,14 +138,25 @@ def transcribe_audio(audio_path):
             # rec.SetWords(True)
             logging.info(f"ASR segment {i + 1}/{len(segments)}")
             ffmpeg_options = ['ffmpeg', '-i', f'{tmp}/{i}.wav', '-ar', '16000', '-acodec', 'pcm_s16le', '-f', 'wav']
+            filter_options = []
             if args.ffmpeg_strategy == 'MERGE':
                 ffmpeg_options.extend(['-ac', '1'])
             elif args.ffmpeg_strategy == 'LEFT':
-                ffmpeg_options.extend(['-af', "pan=mono|c0=FL"])
+                filter_options.append("pan=mono|c0=FL")
             elif args.ffmpeg_strategy == 'RIGHT':
-                ffmpeg_options.extend(['-af', "pan=mono|c0=FR"])
+                filter_options.append("pan=mono|c0=FR")
             else:
                 assert(False)
+
+            if args.ffmpeg_compress:
+                filter_options.append("compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2")
+
+            if args.ffmpeg_noise_reduction:
+                filter_options.append("afftdn=nr=10:nf=-40")
+
+            if len(filter_options) > 0:
+                filter_string = ','.join(filter_options)
+                ffmpeg_options.extend(['-af', filter_string])
 
             ffmpeg_options.append('-')
 

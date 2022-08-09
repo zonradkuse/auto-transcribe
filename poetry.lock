@@ -76,6 +76,14 @@ python-versions = ">=3.6.0"
 unicode_backport = ["unicodedata2"]
 
 [[package]]
+name = "chevron"
+version = "0.14.0"
+description = "Mustache templating language renderer"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "click"
 version = "8.1.3"
 description = "Composable command line interface toolkit"
@@ -958,7 +966,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.10"
-content-hash = "855b5e550de3af7c00a41d5d93657f14f719ff908549ff37e0a30161d403bbeb"
+content-hash = "5b8aeaad41a62bf0bfe3f21797764d07e695de27332100ca0d83787523dd013c"
 
 [metadata.files]
 appdirs = []
@@ -969,6 +977,7 @@ beautifulsoup4 = []
 certifi = []
 cffi = []
 charset-normalizer = []
+chevron = []
 click = []
 colorama = []
 cycler = []

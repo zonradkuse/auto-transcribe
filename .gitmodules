@@ -1,0 +1,3 @@
+[submodule "oTranscribe"]
+	path = oTranscribe
+	url = https://github.com/oTranscribe/oTranscribe.git

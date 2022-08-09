@@ -6,6 +6,7 @@ variables:
 pages:
   stage: deploy
   script:
+    - git config --global url.https://github.com/.insteadOf git://github.com/ # fixes https://github.com/nodejs/help/issues/1461
     - cd oTranscribe
     - apt-get install -y make
     - npm i

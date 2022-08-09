@@ -21,6 +21,7 @@ import datetime
 import multiprocessing
 import tempfile
 import subprocess
+import chevron
 
 import recasepunc
 from vosk import Model, KaldiRecognizer, SpkModel
@@ -193,6 +194,22 @@ def transcribe_audio(audio_path):
     else:
         punctuated_texts = segment_texts
 
+    srt_text = to_srt(segments, punctuated_texts)
+    otr_text = to_otr(segments, punctuated_texts)
+
+    # Write output
+    out_path = f"{audio_path}.srt"
+    logging.info(f"Writing result to {out_path}")
+    with open(out_path, 'w') as f:
+        f.write(srt_text)
+
+    out_path = f"{audio_path}.otr"
+    logging.info(f"Writing result to {out_path}")
+    with open(out_path, 'w') as f:
+        f.write(otr_text)
+
+
+def to_srt(segments, punctuated_texts):
     srt_entries = []
     # limit line length
     _LINE_LENGTH = 13
@@ -215,11 +232,33 @@ def transcribe_audio(audio_path):
             end=datetime.timedelta(seconds=end_seconds))
         srt_entries.append(s)
 
-    # Write output
-    out_path = f"{audio_path}.srt"
-    logging.info(f"Writing result to {out_path}")
-    with open(out_path, 'w') as f:
-        f.write(srt.compose(srt_entries))
+    return srt.compose(srt_entries)
+
+
+def to_otr(segments, punctuated_texts):
+    entries = []
+    _LINE_LENGTH = 13
+    for i, segment in enumerate(segments):
+        entry = {}
+        words = punctuated_texts[i].split()
+        lines = []
+        speaker = segment['speaker']
+        entry['speaker_id'] = speaker
+        for j in range(0, len(words), _LINE_LENGTH):
+               line = words[j : j + _LINE_LENGTH]
+               lines.append(' '.join(line))
+
+        entry['text'] = ' '.join(lines)
+        entry['data_timestamp'] = segment['start']
+        entry['text_timestamp'] = f"{int(segment['start']/60)}:{segment['start'] % 60}"
+        # find start and end times
+        entries.append(entry)
+
+    with open('../templates/otr.tpl', 'r') as f:
+        rendered = chevron.render(f, { "items": entries })
+        rendered = rendered.replace('\n', ' ')
+
+        return json.dumps({"text": rendered})
 
 
 
